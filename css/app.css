@@ -1,0 +1,29 @@
+/* Additions for the real app (attorney dashboard, sync status, sign-in). Builds on styles.css from the prototype. */
+.sync{margin-left:.3rem;color:var(--muted)} .sync.saving{color:var(--warn)} .sync.offline{color:#8a3a00;display:block;margin:.3rem 0 0}
+.app-top{background:var(--brand);color:#fff;padding:.6rem 1rem;padding-top:max(.6rem,env(safe-area-inset-top));display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.app-top .logo{font-weight:800} .app-top .who{font-size:.85rem;opacity:.85}
+.app-top .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+.wrap{max-width:1180px;margin:0 auto;padding:1rem;padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+.cols{display:grid;grid-template-columns:300px minmax(0,1fr);gap:1rem;align-items:start}
+.card+.card{margin-top:1rem}
+.cl-item{display:flex;width:100%;text-align:left;gap:.6rem;align-items:center;font:inherit;color:inherit;background:none;border:1px solid transparent;border-radius:10px;padding:.6rem;min-height:56px;cursor:pointer}
+.cl-item:hover{background:#faf9f6} .cl-item.active{background:#fff;border-color:var(--line);box-shadow:var(--shadow)}
+.cl-item .t{flex:1;min-width:0} .cl-item small{display:block;color:var(--muted)}
+.mini-prog{height:6px;border-radius:3px;background:#e8e6df;overflow:hidden;margin-top:.3rem}.mini-prog span{display:block;height:100%;background:var(--brand-2)}
+.trow{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:.5rem;align-items:start;border:1px solid var(--line);border-radius:10px;padding:.6rem;margin-bottom:.5rem;background:#fff}
+.trow.done{background:#f7faf8} .trow .st{font-size:1.2rem;line-height:1.4} .trow .ttl{font-weight:600;overflow-wrap:anywhere}
+.trow .opts{grid-column:2/-1;display:grid;grid-template-columns:170px minmax(0,1fr);gap:.4rem}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem;font-size:.9rem}
+.keybox{font-family:ui-monospace,Menlo,monospace;background:#f3f2ee;border-radius:8px;padding:.6rem;overflow-wrap:anywhere;font-size:.85rem}
+.login{max-width:420px;margin:3rem auto}
+.bar{display:none}
+@media (max-width:860px){
+  .cols{grid-template-columns:1fr}
+  .cols.has-client .clients-pane{display:none}
+  .cols:not(.has-client) .detail-pane{display:none}
+  .bar{display:flex;gap:.6rem;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:.6rem .75rem calc(.6rem + env(safe-area-inset-bottom))}
+  .bar .btn{flex:1;min-height:52px}
+  .btn,.btn.small{min-height:44px} input,select,textarea{font-size:16px;min-height:44px} textarea{min-height:0}
+  .trow .opts{grid-template-columns:1fr} .grid2,.grid3{grid-template-columns:1fr}
+  .toast{bottom:calc(90px + env(safe-area-inset-bottom))}
+}

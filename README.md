@@ -1,2 +1,3 @@
-# client-checklist-web
-Client Checklist web build (static files only)
+# Client Checklist (web build)
+
+Static build output only. Source is private.
