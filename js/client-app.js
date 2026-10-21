@@ -24,6 +24,7 @@
       openMail: 'Open in my email app', emailHow: 'Send it to: {who}', afterSend: 'After you send it, tap "Mark as done".',
       call: 'Call', hours: 'When to call', haveReady: 'Have this ready', script: 'What to say — step by step', noNumber: 'Your attorney will give you this number. Ask the office if you don\'t have it.',
       openSite: 'Open the website', steps: 'Steps', links: 'Useful links',
+      linkType: 'Our client portal', linkOpens: 'Opens {host} in a new tab. Come back here when you finish.', linkMissing: 'Your attorney\'s office will send you this link. Ask the office if you don\'t have it.',
       remTitle: 'Daily reminder', remTxt: 'Add a reminder to your phone\'s calendar. It repeats every day at {time} until {date}. Delete it when you finish.',
       remBtn: 'Add daily reminder to my calendar', remDl: 'Reminder downloaded — open the file to add it to your calendar.',
       remSoon: 'You will also get a daily reminder from your attorney\'s office until everything is done.',
@@ -50,6 +51,7 @@
       openMail: 'Abrir en mi aplicación de correo', emailHow: 'Envíelo a: {who}', afterSend: 'Después de enviarlo, toque "Marcar como hecho".',
       call: 'Llamar', hours: 'Cuándo llamar', haveReady: 'Tenga esto a la mano', script: 'Qué decir — paso a paso', noNumber: 'Su abogada le dará este número. Pídalo a la oficina si no lo tiene.',
       openSite: 'Abrir la página web', steps: 'Pasos', links: 'Enlaces útiles',
+      linkType: 'Nuestro portal para clientes', linkOpens: 'Se abre {host} en otra pestaña. Regrese aquí cuando termine.', linkMissing: 'La oficina de su abogada le enviará este enlace. Pídalo a la oficina si no lo tiene.',
       remTitle: 'Recordatorio diario', remTxt: 'Agregue un recordatorio al calendario de su teléfono. Se repite cada día a las {time} hasta el {date}. Bórrelo cuando termine.',
       remBtn: 'Agregar recordatorio diario a mi calendario', remDl: 'Recordatorio descargado — abra el archivo para agregarlo a su calendario.',
       remSoon: 'También recibirá un recordatorio diario de la oficina de su abogada hasta terminar todo.',
@@ -63,7 +65,7 @@
       icsFooter: 'Cuando termine todo, puede borrar este recordatorio.', icsTasks: 'Pendiente:'
     }
   };
-  var ICON = { doc: '📄', email: '✉️', phone: '📞', online: '🌐', custom: '📝' };
+  var ICON = { doc: '📄', email: '✉️', phone: '📞', online: '🌐', custom: '📝', link: '🔗' };
 
   /* ---------------- load checklist (never touches done-state) ----------------
    * /c/<token> redirects to client.html#k=<token>. The token only travels in POST bodies to the API. */
@@ -192,7 +194,9 @@
   window.addEventListener('storage', function (e) { if (e.key === K.done) { doneMap = CC.lsGet(K.done, {}); render(); } });
 
   // Library task, or a custom task the attorney's AI wrote with full content (same shape as a library item).
-  function item(t) { if (LIB.byId[t.i]) return LIB.byId[t.i]; var cu = t.cu; return cu && cu.type && cu.type !== 'custom' && LIB.TYPES[cu.type] ? cu : null; }
+  function item(t) { if (LIB.byId[t.i]) return LIB.byId[t.i]; var cu = t.cu; return cu && cu.type && cu.type !== 'custom' && (LIB.TYPES[cu.type] || cu.type === 'link') ? cu : null; }
+  // Portal link task (Cerenade): per-client link (overrides.url) wins over the task's link. https only (the server also allow-lists domains).
+  function portalLink(t, it) { var u = (t.o && t.o.url) || it.url || ''; try { var p = new URL(u); return p.protocol === 'https:' && !p.username && !p.password ? p : null; } catch (e) { return null; } }
   function typeOf(t) { var it = item(t); return it ? it.type : 'custom'; }
   function title(t) { var it = item(t); return (it && tr(it.title)) || t.ti || tr(t.cu && t.cu.title) || 'Task'; }
   function sortKey(t) { return t.d || '9999-12-31'; }
@@ -238,7 +242,7 @@
       '<h3 class="acc-h"><button class="acc-head" aria-expanded="' + isOpen + '" aria-controls="' + pid + '" id="h_' + t.id + '">' +
       '<span class="ic">' + (opts.done ? '✅' : ICON[ty]) + '</span><span class="body">' +
       (opts.next ? '<span class="upnext">' + T('next') + '</span>' : '') +
-      '<b>' + CC.esc(title(t)) + '</b><span class="due ' + (opts.done ? '' : di.cls) + '">' + CC.esc(opts.done ? tr(LIB.TYPES[ty]) : di.txt) + '</span></span>' +
+      '<b>' + CC.esc(title(t)) + '</b><span class="due ' + (opts.done ? '' : di.cls) + '">' + CC.esc(opts.done ? (ty === 'link' ? T('linkType') : tr(LIB.TYPES[ty])) : di.txt) + '</span></span>' +
       '<span class="chev" aria-hidden="true">⌄</span></button></h3>' +
       '<div class="acc-panel" id="' + pid + '" role="region" aria-labelledby="h_' + t.id + '"' + (isOpen ? '' : ' hidden') + '>' + (isOpen ? panelHTML(t) : '') + '</div></div>';
   }
@@ -352,6 +356,13 @@
         if (it.url && /^https?:\/\//.test(it.url)) h += '<section><a class="btn primary block" href="' + CC.esc(it.url) + '" target="_blank" rel="noopener noreferrer">🌐 ' + T('openSite') + '</a><p class="small muted" style="margin:.3rem 0 0;word-break:break-all">' + CC.esc(it.url) + '</p></section>';
         h += '<section><h4>' + T('steps') + '</h4><ol class="steps">' + olHTML(it.steps || []) + '</ol></section>';
         h += fieldsHTML(t, keys);
+      }
+      if (ty === 'link') {
+        var pl = portalLink(t, it), btn = (t.o && t.o.button) || tr(it.button) || T('openSite');
+        h += pl ? '<section><a class="btn primary block big-link" href="' + CC.esc(pl.href) + '" target="_blank" rel="noopener noreferrer">🔗 ' + CC.esc(btn) + '</a>' +
+                  '<p class="small muted" style="margin:.4rem 0 0">' + CC.esc(T('linkOpens', { host: pl.hostname })) + '</p></section>'
+                : '<section><div class="notice">' + T('linkMissing') + '</div></section>';
+        h += '<section><h4>' + T('steps') + '</h4><ol class="steps">' + olHTML(it.steps || []) + '</ol></section>';
       }
       if (it.tips && it.tips.length) h += '<section><h4>' + T('tips') + '</h4>' + listHTML(it.tips) + '</section>';
       if (it.links && it.links.length) h += '<section><h4>' + T('links') + '</h4><ul>' + it.links.filter(function (l) { return /^https?:\/\//.test(l.url); }).map(function (l) { return '<li><a href="' + l.url + '" target="_blank" rel="noopener noreferrer">' + CC.esc(tr(l.label)) + '</a></li>'; }).join('') + '</ul></section>';

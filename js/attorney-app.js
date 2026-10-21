@@ -7,7 +7,10 @@
   var esc = CC.esc;
   var sb = window.supabase.createClient(APP.supabaseUrl, APP.anonKey, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true } });
   var session = null, clients = [], current = null, preview = [];
-  var TYPE = { doc: 'Document', email: 'Email', phone: 'Phone', online: 'Online/mail', custom: 'Custom' };
+  var TYPE = { doc: 'Document', email: 'Email', phone: 'Phone', online: 'Online/mail', custom: 'Custom', link: 'Cerenade link' };
+  var LINK_KIND = { questionnaire: 'Questionnaire (intake form)', upload: 'Document upload', other: 'Other portal step' };
+  var profile = null;   // office profile incl. default Cerenade links (portal_links)
+  function loadProfile() { return call('get_profile').then(function (p) { profile = p || {}; return profile; }); }
   var narrow = window.matchMedia('(max-width: 860px)');
 
   function toast(msg) {
@@ -39,7 +42,7 @@
   function start() {
     show('app'); $('who').textContent = session.user.email;
     if (/[?&]code=/.test(location.search)) history.replaceState(null, '', location.pathname);
-    loadClients();
+    loadClients(); loadProfile().catch(function () {});
   }
 
   /* ---------- client list ---------- */
@@ -83,8 +86,18 @@
         '<div><div class="ttl">' + esc(t.title) + '</div><span class="badge ' + t.type + '">' + TYPE[t.type] + '</span>' + (t.done && t.done_at ? ' <span class="small muted">done ' + esc(t.done_at.slice(0, 10)) + '</span>' : '') + '</div>' +
         '<button class="btn small ghost icon" data-act="remove" aria-label="Remove task">✕</button>' +
         '<div class="opts"><input type="date" data-k="due_date" value="' + (t.due_date || '') + '" aria-label="Due date"><input data-k="note" placeholder="Note to client (optional)" value="' + esc(t.note || '') + '" aria-label="Note">' +
-        (t.type === 'email' ? '<input data-k="to" type="email" placeholder="Recipient email" value="' + esc((t.overrides && t.overrides.to) || '') + '" aria-label="Recipient email">' : '') + '</div></div>';
+        (t.type === 'email' ? '<input data-k="to" type="email" placeholder="Recipient email" value="' + esc((t.overrides && t.overrides.to) || '') + '" aria-label="Recipient email">' : '') +
+        (t.type === 'link' ? '<input data-k="url" type="url" placeholder="This client\'s Cerenade link (https://…)" value="' + esc((t.link && t.link.url) || '') + '" aria-label="Cerenade link for this client">' +
+          '<input data-k="button" placeholder="Button text (optional)" value="' + esc((t.overrides && t.overrides.button) || '') + '" aria-label="Button text">' : '') + '</div></div>';
     }).join('') : '<p class="muted">No tasks yet.</p>') + '</div>';
+    // Cerenade portal link
+    var pl = (profile && profile.portal_links) || {};
+    h += '<details class="card sec" id="linkTaskCard"><summary><h2>Add a Cerenade link</h2></summary><div class="sec-body"><form id="linkTaskForm">' +
+      '<p class="small muted" style="margin-top:0">The client gets instructions (English/Spanish) and a big button that opens the link in a new tab, then checks it off. Documents and answers stay in Cerenade.</p>' +
+      '<div class="grid3"><div><label for="lt_kind">What for</label><select id="lt_kind">' + Object.keys(LINK_KIND).map(function (k) { return '<option value="' + k + '">' + LINK_KIND[k] + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="lt_due">Due (optional)</label><input id="lt_due" type="date"></div><div><label for="lt_btn">Button text (optional)</label><input id="lt_btn" maxlength="60" placeholder="Default: Fill out your questionnaire"></div></div>' +
+      '<label for="lt_url">Cerenade link (https://…eimmigration.com/…)</label><input id="lt_url" type="url" placeholder="' + esc(pl.cerenade_questionnaire_url ? 'Leave empty to use the office default' : 'Paste the link from Cerenade') + '">' +
+      '<button class="btn primary" style="margin-top:.6rem" type="submit">Add link task</button></form></div></details>';
     // quick add
     h += '<div class="card" id="quickCard"><h2>Quick add — type or dictate</h2><textarea id="dictation" rows="3" placeholder="e.g. birth certificate and tax transcripts by Nov 15; letter from her pastor by Friday"></textarea>' +
       '<div class="row" style="margin-top:.5rem"><button class="btn mic" id="micBtn">🎤 Dictate</button><button class="btn primary" id="previewBtn">Preview tasks</button><span class="small muted" id="parseMsg"></span></div><div id="pvRows"></div></div>';
@@ -124,11 +137,23 @@
       row.querySelectorAll('input[data-k]').forEach(function (inp) {
         inp.onchange = function () {
           var k = inp.getAttribute('data-k'), a = { task_id: id };
-          if (k === 'to') a.overrides = { to: inp.value.trim() }; else a[k] = k === 'due_date' ? (inp.value || null) : inp.value;
+          if (k === 'to' || k === 'url' || k === 'button') { a.overrides = {}; a.overrides[k] = inp.value.trim(); } else a[k] = k === 'due_date' ? (inp.value || null) : inp.value;
           call('edit_task', a).then(function () { toast('Saved'); loadClients(); }).catch(fail);
         };
       });
     });
+    var kindDefault = function () { var pl = (profile && profile.portal_links) || {}, k = $('lt_kind').value;
+      $('lt_url').placeholder = (k === 'questionnaire' ? pl.cerenade_questionnaire_url : k === 'upload' ? pl.cerenade_upload_url : '') ? 'Leave empty to use the office default' : 'Paste the link from Cerenade';
+      $('lt_btn').placeholder = k === 'upload' ? 'Default: Upload your documents' : k === 'questionnaire' ? 'Default: Fill out your questionnaire' : 'Default: Open the client portal'; };
+    $('lt_kind').onchange = kindDefault; kindDefault();
+    $('linkTaskForm').onsubmit = function (e) {
+      e.preventDefault();
+      var link = { kind: $('lt_kind').value }, task = { link: link };
+      if ($('lt_url').value.trim()) link.url = $('lt_url').value.trim();
+      if ($('lt_btn').value.trim()) link.button_label = $('lt_btn').value.trim();
+      if ($('lt_due').value) task.due_date = $('lt_due').value;
+      call('add_tasks', { client_id: c.id, tasks: [task] }).then(function () { toast('Link task added'); refresh(); }).catch(fail);
+    };
     $('previewBtn').onclick = doPreview;
     bindMic();
     $('libSearch').oninput = renderLibrary;
@@ -242,7 +267,11 @@
       var p = res[0] || {}, keys = res[1] || [];
       $('detail').innerHTML = '<div class="card"><button class="btn small ghost" id="backBtn3">← All clients</button><h2>Office profile (shown to clients)</h2><form id="profForm">' +
         '<div class="grid3"><div><label for="p_name">Office name</label><input id="p_name" value="' + esc(p.office_name || '') + '"></div><div><label for="p_phone">Office phone</label><input id="p_phone" value="' + esc(p.office_phone || '') + '"></div>' +
-        '<div><label for="p_email">Office email</label><input id="p_email" type="email" value="' + esc(p.office_email || '') + '"></div></div><button class="btn primary" style="margin-top:.6rem">Save</button></form></div>' +
+        '<div><label for="p_email">Office email</label><input id="p_email" type="email" value="' + esc(p.office_email || '') + '"></div></div>' +
+        '<h3 style="margin-top:1rem">Default Cerenade links (optional)</h3><p class="small muted" style="margin:0">Used when you add a Cerenade link task without pasting a link. Allowed sites: ' + esc((p.portal_link_domains || []).join(', ')) + '.</p>' +
+        '<div class="grid2"><div><label for="p_qnr">Questionnaire link</label><input id="p_qnr" type="url" placeholder="https://…" value="' + esc((p.portal_links && p.portal_links.cerenade_questionnaire_url) || '') + '"></div>' +
+        '<div><label for="p_upl">Document upload link</label><input id="p_upl" type="url" placeholder="https://…" value="' + esc((p.portal_links && p.portal_links.cerenade_upload_url) || '') + '"></div></div>' +
+        '<button class="btn primary" style="margin-top:.6rem">Save</button></form></div>' +
         '<div class="card"><h2>Connect your AI assistant</h2><p class="small">Server URL (MCP, Streamable HTTP):</p><div class="keybox" id="mcpUrl">' + esc(APP.mcpUrl) + '</div>' +
         '<p class="small">Header: <code>Authorization: Bearer &lt;key&gt;</code>. Make one key per assistant so you can revoke them separately.</p>' +
         '<form id="keyForm" class="row"><input id="k_label" placeholder="Key name, e.g. Claude" class="grow" style="width:auto" required><button class="btn primary">Create key</button></form><div id="newKey"></div>' +
@@ -251,7 +280,8 @@
             (k.last_used_at ? ' · last used ' + esc(k.last_used_at.slice(0, 10)) : ' · never used') + (k.revoked_at ? ' · revoked' : '') + '</span></span>' + (k.revoked_at ? '' : '<button class="btn small" data-revoke="' + k.id + '">Revoke</button>') + '</div>';
         }).join('') : '<p class="muted small">No keys yet.</p>') + '</div>';
       $('backBtn3').onclick = function () { $('cols').classList.remove('has-client'); $('detail').innerHTML = ''; };
-      $('profForm').onsubmit = function (e) { e.preventDefault(); call('update_profile', { office_name: $('p_name').value, office_phone: $('p_phone').value, office_email: $('p_email').value }).then(function () { toast('Saved'); }).catch(fail); };
+      $('profForm').onsubmit = function (e) { e.preventDefault(); call('update_profile', { office_name: $('p_name').value, office_phone: $('p_phone').value, office_email: $('p_email').value,
+        cerenade_questionnaire_url: $('p_qnr').value.trim(), cerenade_upload_url: $('p_upl').value.trim() }).then(function (np) { profile = np; toast('Saved'); }).catch(fail); };
       $('keyForm').onsubmit = function (e) {
         e.preventDefault();
         call('create_api_key', { label: $('k_label').value.trim() }).then(function (k) {
